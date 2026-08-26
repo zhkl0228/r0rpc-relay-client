@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.r0rpc</groupId>
+    <artifactId>r0rpc-relay-client</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <description>r0rpc 设备端 SDK（无第三方依赖，同一个 jar 既跑 Android 也跑桌面 JVM）</description>
+
+    <!-- 独立工程，不挂在 pac 的 pom 下：它是设备端产物，不参与 WAR 构建 -->
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <build>
+        <!-- 沿用 SDK 原有的目录结构，不强行改成 src/main/java -->
+        <sourceDirectory>${project.basedir}/src</sourceDirectory>
+        <finalName>r0rpc-relay-client</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <!-- Android 侧要 Java 8 字节码；JDK 21/25 编译时只会有一条 obsolete 警告 -->
+                    <release>8</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.1</version>
+                <configuration>
+                    <!-- 输出到 dist/，两个 demo 与文档里引用的都是这个路径 -->
+                    <outputDirectory>${project.basedir}/dist</outputDirectory>
+                </configuration>
+            </plugin>
+            <plugin>
+                <!-- 原来这一步是 android-frida-demo/sync-jar.ps1 干的(只 Windows 能跑)，
+                     现在跟着 package 一起做，顺手把两个 demo 里的 jar 都同步了，免得三份漂移 -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>sync-demo-jars</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <copy file="${project.basedir}/dist/r0rpc-relay-client.jar"
+                                      todir="${project.basedir}/../android-frida-demo/lib" overwrite="true"/>
+                                <copy file="${project.basedir}/dist/r0rpc-relay-client.jar"
+                                      todir="${project.basedir}/../xposed-demo/app/libs" overwrite="true"/>
+                                <echo message="synced r0rpc-relay-client.jar to android-frida-demo and xposed-demo"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

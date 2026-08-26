@@ -4,13 +4,17 @@ This folder contains the Java relay client SDK used by Android/Xposed integratio
 
 ## Build
 
-From this directory run:
+从当前目录跑（不需要 Android SDK，纯 Java 库）：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
+```bash
+mvn package
 ```
 
-The jar will be created at `dist/r0rpc-relay-client.jar`.
+产物在 `dist/r0rpc-relay-client.jar`（Java 8 字节码），并会自动同步到两个 demo 的
+`lib/`、`app/libs/` 下，免得三份 jar 各自漂移。
+
+> jar 里带了一个极小的 `android.util.Log` 桩：Android 上会被框架里的真类盖掉，
+> 桌面 JVM 上（比如跑 `ExampleMain`）则靠它才能跑起来。所以别把它从 jar 里剔掉。
 
 ## Basic usage
 
