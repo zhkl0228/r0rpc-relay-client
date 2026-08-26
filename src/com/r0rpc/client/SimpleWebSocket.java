@@ -19,6 +19,10 @@ import javax.net.ssl.SSLSocketFactory;
 
 public final class SimpleWebSocket implements Closeable {
     private static final String WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    /** 与服务端 4MB 单帧上限对齐，防止连续帧被拿来撑爆内存。 */
+    private static final int MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+
+    private static final int OPCODE_CONTINUATION = 0x0;
     private static final int OPCODE_TEXT = 0x1;
     private static final int OPCODE_CLOSE = 0x8;
     private static final int OPCODE_PING = 0x9;
@@ -136,7 +140,16 @@ public final class SimpleWebSocket implements Closeable {
         return !closed && !socket.isClosed();
     }
 
+    /**
+     * 读一条完整的文本消息。
+     * <p>
+     * 必须支持连续帧：服务端(Tomcat)发送文本消息时，UTF-8 编码超过它内部编码缓冲(默认 8KB)就会拆成
+     * {@code fin=0} 的首帧 + 若干 {@code opcode=0} 的连续帧。以前这里见到 {@code fin=0} 直接抛异常，
+     * 结果是「payload 一大就断线重连、调用方等到超时」。控制帧(ping/pong/close)可以夹在中间，
+     * 要就地处理且不能打断正在重组的消息。
+     */
     public String readText() throws IOException {
+        ByteArrayOutputStream pending = null;
         while (isOpen()) {
             Frame frame;
             try {
@@ -150,7 +163,29 @@ public final class SimpleWebSocket implements Closeable {
             }
             switch (frame.opcode) {
                 case OPCODE_TEXT:
-                    return new String(frame.payload, StandardCharsets.UTF_8);
+                    if (pending != null) {
+                        throw new IOException("new text frame while previous message is still incomplete, pending=" + pending.size() + " bytes");
+                    }
+                    if (frame.fin) {
+                        return new String(frame.payload, StandardCharsets.UTF_8);
+                    }
+                    pending = new ByteArrayOutputStream(frame.payload.length * 2);
+                    pending.write(frame.payload);
+                    break;
+                case OPCODE_CONTINUATION:
+                    if (pending == null) {
+                        throw new IOException("continuation frame without a preceding fin=0 data frame");
+                    }
+                    pending.write(frame.payload);
+                    if (pending.size() > MAX_MESSAGE_BYTES) {
+                        throw new IOException("websocket message too large: " + pending.size() + " bytes");
+                    }
+                    if (frame.fin) {
+                        String text = new String(pending.toByteArray(), StandardCharsets.UTF_8);
+                        pending = null;
+                        return text;
+                    }
+                    break;
                 case OPCODE_PING:
                     sendControl(OPCODE_PONG, frame.payload);
                     break;
@@ -160,7 +195,9 @@ public final class SimpleWebSocket implements Closeable {
                     close();
                     return null;
                 default:
-                    break;
+                    // 服务端只发文本与控制帧；出现别的 opcode 说明对面换了实现，抛出来才拿得到样本
+                    throw new IOException("unsupported websocket opcode: " + frame.opcode + ", fin=" + frame.fin
+                            + ", length=" + frame.payload.length);
             }
         }
         return null;
@@ -224,9 +261,6 @@ public final class SimpleWebSocket implements Closeable {
         }
         int second = readByte();
         boolean fin = (first & 0x80) != 0;
-        if (!fin) {
-            throw new IOException("Fragmented websocket frames are not supported");
-        }
         int opcode = first & 0x0f;
         int payloadLength = second & 0x7f;
         if (payloadLength == 126) {
@@ -253,7 +287,7 @@ public final class SimpleWebSocket implements Closeable {
                 payload[i] ^= mask[i % 4];
             }
         }
-        return new Frame(opcode, payload);
+        return new Frame(opcode, fin, payload);
     }
 
     private int readByte() throws IOException {
@@ -324,10 +358,12 @@ public final class SimpleWebSocket implements Closeable {
 
     private static final class Frame {
         private final int opcode;
+        private final boolean fin;
         private final byte[] payload;
 
-        private Frame(int opcode, byte[] payload) {
+        private Frame(int opcode, boolean fin, byte[] payload) {
             this.opcode = opcode;
+            this.fin = fin;
             this.payload = payload == null ? new byte[0] : payload;
         }
     }

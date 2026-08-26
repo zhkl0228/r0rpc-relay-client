@@ -1,7 +1,5 @@
 package com.r0rpc.client;
 
-import android.util.Log;
-
 import com.r0rpc.relay.api.RelayHandler;
 import com.r0rpc.relay.api.RelayRequest;
 import com.r0rpc.relay.api.RelayResponse;
@@ -35,6 +33,19 @@ public class RelayClient {
     }
 
     private static final String TAG = "R0RPC";
+    private static final RelayLogger DEFAULT_LOGGER = new RelayLogger() {
+        @Override
+        public void warn(String message) {
+            System.out.println("[W/" + TAG + "] " + message);
+        }
+        @Override
+        public void error(String message, Throwable error) {
+            System.err.println("[E/" + TAG + "] " + message);
+            if (error != null) {
+                error.printStackTrace(System.err);
+            }
+        }
+    };
     private static final long BASE_RETRY_DELAY_MS = 1000L;
     private static final long MAX_RETRY_DELAY_MS = 30000L;
     private static final long HEARTBEAT_INTERVAL_MS = 5000L;
@@ -64,6 +75,7 @@ public class RelayClient {
     private volatile boolean running;
     private volatile Thread workerThread;
     private volatile ErrorHandler errorHandler;
+    private volatile RelayLogger logger = DEFAULT_LOGGER;
     private volatile ThreadPoolExecutor jobExecutor;
 
     public RelayClient(String baseUrl, String username, String password, String clientId, String group) {
@@ -115,6 +127,14 @@ public class RelayClient {
             throw new IllegalArgumentException("handler action can not be empty");
         }
         relayHandlers.put(action.trim(), handler);
+        return this;
+    }
+
+    /**
+     * 换掉 SDK 的日志出口，比如在 Android 上接到 logcat 拿到自己的 tag。传 null 恢复默认。
+     */
+    public RelayClient logger(RelayLogger logger) {
+        this.logger = logger == null ? DEFAULT_LOGGER : logger;
         return this;
     }
 
@@ -217,7 +237,7 @@ public class RelayClient {
                     retryAttempt = 0;
                 }
                 long delayMs = computeRetryDelayMs(retryAttempt++);
-                Log.w(TAG, "relay connection closed, retry in " + delayMs + "ms, attempt=" + retryAttempt);
+                logger.warn("relay connection closed, retry in " + delayMs + "ms, attempt=" + retryAttempt);
                 sleepQuietly(delayMs);
             } catch (IOException ex) {
                 if (!running) {
@@ -230,7 +250,7 @@ public class RelayClient {
                     retryAttempt = 0;
                 }
                 long delayMs = computeRetryDelayMs(retryAttempt++);
-                Log.w(TAG, "relay reconnect scheduled in " + delayMs + "ms, attempt=" + retryAttempt + ", reason=" + safeMessage(ex));
+                logger.warn("relay reconnect scheduled in " + delayMs + "ms, attempt=" + retryAttempt + ", reason=" + safeMessage(ex));
                 sleepQuietly(delayMs);
             } finally {
                 closeQuietly(socket);
@@ -269,7 +289,7 @@ public class RelayClient {
                 sleepQuietly(computeHeartbeatDelayMs());
                 while (running && socket.isOpen()) {
                     if (isServerSilent()) {
-                        Log.w(TAG, "relay server silent, closing socket for reconnect");
+                        logger.warn("relay server silent, closing socket for reconnect");
                         closeQuietly(socket);
                         return;
                     }
@@ -493,8 +513,16 @@ public class RelayClient {
 
             int statusCode = connection.getResponseCode();
             String responseText = readAll(statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream());
-            Object parsed = responseText.isEmpty() ? new LinkedHashMap<String, Object>() : MiniJson.parse(responseText);
-            if (!(parsed instanceof Map)) { throw new IOException("Unexpected response: " + responseText); }
+            Object parsed;
+            try {
+                parsed = responseText.isEmpty() ? new LinkedHashMap<String, Object>() : MiniJson.parse(responseText);
+            } catch (RuntimeException ex) {
+                // body 不是 JSON：多半是 baseUrl 写错(少了路径前缀/打到了别的服务)，
+                // 网关或容器回了一张 HTML 错误页。把状态码和正文头部带上，别让它变成
+                // MiniJson 内部的 NumberFormatException——那个报错什么也说明不了
+                throw new IOException("HTTP " + statusCode + " with non-JSON body from " + url + ": " + head(responseText), ex);
+            }
+            if (!(parsed instanceof Map)) { throw new IOException("HTTP " + statusCode + " unexpected response from " + url + ": " + head(responseText)); }
             Map<String, Object> result = (Map<String, Object>) parsed;
             if (statusCode >= 400) { throw new IOException("HTTP " + statusCode + ": " + asString(result.get("error"))); }
             return result;
@@ -548,6 +576,14 @@ public class RelayClient {
             return new EncodedPayload(payload, encoding, rawSize, compressedSize);
         }
     }
+    private static String head(String text) {
+        if (text == null) {
+            return "null";
+        }
+        String trimmed = text.trim();
+        return trimmed.length() <= 200 ? trimmed : trimmed.substring(0, 200) + "...(" + trimmed.length() + " chars)";
+    }
+
     private void notifyError(Throwable throwable) {
         ErrorHandler handler = errorHandler;
         if (handler != null) {
@@ -557,7 +593,7 @@ public class RelayClient {
         if (throwable == null) {
             return;
         }
-        Log.e(TAG, "relay client error", throwable);
+        logger.error("relay client error", throwable);
     }
 
     private void ensureLoggedIn() throws IOException {
@@ -653,6 +689,9 @@ public class RelayClient {
                     }
                 }
             );
+            // 核心线程也允许超时回收：maxInFlight 默认 256，一次并发高峰会创建到 256 条线程，
+            // 不回收的话它们会在手机上一直常驻(每条线程都占栈)
+            jobExecutor.allowCoreThreadTimeOut(true);
             if (previous != null) {
                 previous.shutdownNow();
             }
