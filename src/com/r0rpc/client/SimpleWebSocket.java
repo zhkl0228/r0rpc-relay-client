@@ -57,6 +57,9 @@ public final class SimpleWebSocket implements Closeable {
             Socket socket = secure ? SSLSocketFactory.getDefault().createSocket() : new Socket();
             socket.connect(new InetSocketAddress(uri.getHost(), port), connectTimeoutMs);
             socket.setSoTimeout(readTimeoutMs);
+            // 关掉 Nagle：RPC 帧都很小，攒包等 ACK 会把「一次调用一个来回」串行化成
+            // 每次 40ms(延迟 ACK)甚至一个 RTT。实测线上单设备吞吐因此卡在 ~9 次/秒
+            socket.setTcpNoDelay(true);
 
             SimpleWebSocket webSocket = new SimpleWebSocket(socket);
             webSocket.handshake(uri, headers);
