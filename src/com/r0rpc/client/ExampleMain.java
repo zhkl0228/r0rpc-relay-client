@@ -13,11 +13,11 @@ public final class ExampleMain {
 
     public static void main(String[] args) throws Exception {
         final RelayClient client = new RelayClient(
-            "127.0.0.1:9876",
-            "client_demo",
-            "Client@123456",
-            "device-001",
-            "demo-group"
+            "https://gzmtx.cn/r0rpc",   // 线上默认；必须带 /r0rpc 前缀
+            "device",
+            "850128",
+            "device-001",              // clientId 要稳定，别用随机值
+            "default"
         );
 
         client.registerHandler("ping", new RelayHandler() {

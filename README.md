@@ -16,11 +16,11 @@ The jar will be created at `dist/r0rpc-relay-client.jar`.
 
 ```java
 RelayClient client = new RelayClient(
-    "127.0.0.1:9876",
-    "client_demo",
-    "Client@123456",
+    "https://gzmtx.cn/r0rpc",
+    "device",
+    "850128",
     "device-001",
-    "demo-group"
+    "default"
 );
 
 client.registerAction("get_profile", payload -> {
@@ -36,7 +36,7 @@ client.start();
 ## Relay API usage
 
 ```java
-new RelayClient("127.0.0.1:9876", username, password, clientId, group)
+new RelayClient("https://gzmtx.cn/r0rpc", username, password, clientId, group)
     .registerHandler("ping", new RelayHandler() {
         @Override
         public void handleRequest(RelayRequest request, RelayResponse response) {
