@@ -4,16 +4,36 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.r0rpc</groupId>
+    <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
+    <name>r0rpc-relay-client</name>
     <description>r0rpc 设备端 SDK（无第三方依赖，同一个 jar 既跑 Android 也跑桌面 JVM）</description>
+    <url>https://github.com/zhkl0228/pac/tree/master/r0rpc-clients/java</url>
+    <licenses>
+        <license>
+            <name>The Apache Software License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>zhkl0228</name>
+            <email>zhkl0228@gmail.com</email>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:git@github.com:zhkl0228/pac.git</connection>
+        <developerConnection>scm:git:git@github.com:zhkl0228/pac.git</developerConnection>
+        <url>git@github.com:zhkl0228/pac.git</url>
+    </scm>
 
     <!-- 独立工程，不挂在 pac 的 pom 下：它是设备端产物，不参与 WAR 构建 -->
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.test.skip>true</maven.test.skip>
         <!-- d8/r8 的纯 Java 制品版本；换版本只动这里 -->
         <r8.version>8.7.18</r8.version>
     </properties>
@@ -29,7 +49,6 @@
     <build>
         <!-- 沿用 SDK 原有的目录结构，不强行改成 src/main/java -->
         <sourceDirectory>${project.basedir}/src</sourceDirectory>
-        <finalName>r0rpc-relay-client</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -41,13 +60,36 @@
                 </configuration>
             </plugin>
             <plugin>
+                <!-- 发 Central 必须带 sources jar -->
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.1</version>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- 发 Central 必须带 javadoc jar；SDK 是 Java8 源码，doclint 关掉免得注释小瑕疵报错 -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.11.2</version>
                 <configuration>
-                    <!-- 输出到 dist/，两个 demo 与文档里引用的都是这个路径 -->
-                    <outputDirectory>${project.basedir}/dist</outputDirectory>
+                    <source>8</source>
+                    <additionalOptions>-Xdoclint:none</additionalOptions>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadoc</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <!-- android-frida-demo 要把 jar 推到设备、由 DexClassLoader 加载，
@@ -78,10 +120,11 @@
                                 <!-- 21 起足够；RelayClient 是 Java8 字节码 -->
                                 <argument>--min-api</argument>
                                 <argument>21</argument>
-                                <!-- output 参数给 .jar 路径时，d8 直接产出含 classes.dex 的 jar -->
+                                <!-- output 参数给 .jar 路径时，d8 直接产出含 classes.dex 的 jar；
+                                     产到 target 下作为 dex classifier 制品，随 deploy 一起发 Central -->
                                 <argument>--output</argument>
-                                <argument>${project.basedir}/../android-frida-demo/lib/r0rpc-relay-client.jar</argument>
-                                <argument>${project.basedir}/dist/r0rpc-relay-client.jar</argument>
+                                <argument>${project.build.directory}/${project.build.finalName}-dex.jar</argument>
+                                <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
                             </arguments>
                         </configuration>
                     </execution>
@@ -95,9 +138,38 @@
                 </dependencies>
             </plugin>
             <plugin>
+                <!-- 把 d8 产出的 dex jar 作为 classifier=dex 的附加制品挂上，
+                     这样 deploy 会同时发布：
+                       主 jar          → J2SE / 桌面 JVM，以及 Android 用 AGP 自己 dex 的工程
+                       xxx-dex.jar     → Android 运行时直接加载 dex 的场景(如 Frida)
+                     依赖方按需取 classifier：com.github.zhkl0228:r0rpc-relay-client:1.0.0(:dex) -->
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-dex</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>attach-artifact</goal>
+                        </goals>
+                        <configuration>
+                            <artifacts>
+                                <artifact>
+                                    <file>${project.build.directory}/${project.build.finalName}-dex.jar</file>
+                                    <type>jar</type>
+                                    <classifier>dex</classifier>
+                                </artifact>
+                            </artifacts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <!-- 原来这一步是 android-frida-demo/sync-jar.ps1 干的(只 Windows 能跑)。
-                     xposed-demo 是把 jar 当编译依赖、由 AGP 自己 dex，所以它要普通 class jar —— 这里同步。
-                     android-frida-demo 那份由上面的 d8 步骤产出 dex jar，不在这里 copy。 -->
+                     标准构建把主 jar 放 target/(名字带版本号，Central 认这个)；这里再拷一份稳定名
+                     dist/r0rpc-relay-client.jar 给文档/demo 引用，并同步给 xposed-demo(它当编译依赖、
+                     由 AGP 自己 dex，要普通 class jar)。android-frida-demo 那份由上面的 d8 产出 dex jar。 -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
@@ -110,13 +182,44 @@
                         </goals>
                         <configuration>
                             <target>
-                                <copy file="${project.basedir}/dist/r0rpc-relay-client.jar"
-                                      todir="${project.basedir}/../xposed-demo/app/libs" overwrite="true"/>
-                                <echo message="synced class jar to xposed-demo; android-frida-demo gets the dex jar from d8"/>
+                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
+                                      tofile="${project.basedir}/dist/r0rpc-relay-client.jar" overwrite="true"/>
+                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
+                                      tofile="${project.basedir}/../xposed-demo/app/libs/r0rpc-relay-client.jar" overwrite="true"/>
+                                <copy file="${project.build.directory}/${project.build.finalName}-dex.jar"
+                                      tofile="${project.basedir}/../android-frida-demo/lib/r0rpc-relay-client.jar" overwrite="true"/>
+                                <echo message="synced class jar to dist/ and xposed-demo, dex jar to android-frida-demo"/>
                             </target>
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <!-- 发 Central 要 GPG 签名；用本机密钥(Banny nexus)，verify 阶段签 -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- 直发 Sonatype Central；publishingServerId=oss 对应 settings.xml 里的 oss 令牌 -->
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.10.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>oss</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
+                </configuration>
             </plugin>
         </plugins>
     </build>
