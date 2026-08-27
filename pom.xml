@@ -14,7 +14,17 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- d8/r8 的纯 Java 制品版本；换版本只动这里 -->
+        <r8.version>8.7.18</r8.version>
     </properties>
+
+    <!-- r8(com.android.tools:r8)只在 Google Maven 上；仅这个 plugin 用得到 -->
+    <pluginRepositories>
+        <pluginRepository>
+            <id>google</id>
+            <url>https://maven.google.com</url>
+        </pluginRepository>
+    </pluginRepositories>
 
     <build>
         <!-- 沿用 SDK 原有的目录结构，不强行改成 src/main/java -->
@@ -40,8 +50,54 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- 原来这一步是 android-frida-demo/sync-jar.ps1 干的(只 Windows 能跑)，
-                     现在跟着 package 一起做，顺手把两个 demo 里的 jar 都同步了，免得三份漂移 -->
+                <!-- android-frida-demo 要把 jar 推到设备、由 DexClassLoader 加载，
+                     所以它那份必须是「含 classes.dex 的 dex jar」而不是普通 class jar
+                     (Android 14+ 的 W^X 只认设备上 App 私有、只读的 dex，普通 class jar 加载不了)。
+                     用 Google Maven 的纯 Java d8(com.android.tools:r8 里的 D8 主类)来转，
+                     不依赖本地 Android SDK / build-tools，跨平台。
+                     注意：这个 goal 在 Maven 自身的 JVM 里跑，d8/r8 需要 JDK 17+，
+                     所以构建本模块要用 JDK 17 及以上(编译仍产出 release 8 字节码)。 -->
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>dex-android-frida</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.android.tools.r8.D8</mainClass>
+                            <!-- 只用插件自带的 r8 依赖，别把工程 classpath 混进来 -->
+                            <addOutputToClasspath>false</addOutputToClasspath>
+                            <includeProjectDependencies>false</includeProjectDependencies>
+                            <includePluginDependencies>true</includePluginDependencies>
+                            <arguments>
+                                <argument>--release</argument>
+                                <!-- 21 起足够；RelayClient 是 Java8 字节码 -->
+                                <argument>--min-api</argument>
+                                <argument>21</argument>
+                                <!-- output 参数给 .jar 路径时，d8 直接产出含 classes.dex 的 jar -->
+                                <argument>--output</argument>
+                                <argument>${project.basedir}/../android-frida-demo/lib/r0rpc-relay-client.jar</argument>
+                                <argument>${project.basedir}/dist/r0rpc-relay-client.jar</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.android.tools</groupId>
+                        <artifactId>r8</artifactId>
+                        <version>${r8.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+            <plugin>
+                <!-- 原来这一步是 android-frida-demo/sync-jar.ps1 干的(只 Windows 能跑)。
+                     xposed-demo 是把 jar 当编译依赖、由 AGP 自己 dex，所以它要普通 class jar —— 这里同步。
+                     android-frida-demo 那份由上面的 d8 步骤产出 dex jar，不在这里 copy。 -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
@@ -55,10 +111,8 @@
                         <configuration>
                             <target>
                                 <copy file="${project.basedir}/dist/r0rpc-relay-client.jar"
-                                      todir="${project.basedir}/../android-frida-demo/lib" overwrite="true"/>
-                                <copy file="${project.basedir}/dist/r0rpc-relay-client.jar"
                                       todir="${project.basedir}/../xposed-demo/app/libs" overwrite="true"/>
-                                <echo message="synced r0rpc-relay-client.jar to android-frida-demo and xposed-demo"/>
+                                <echo message="synced class jar to xposed-demo; android-frida-demo gets the dex jar from d8"/>
                             </target>
                         </configuration>
                     </execution>

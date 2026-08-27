@@ -20,8 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.zip.GZIPOutputStream;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadLocalRandom;
@@ -670,16 +670,21 @@ public class RelayClient {
     private void ensureJobExecutor() {
         int desired = maxInFlight <= 0 ? 1 : maxInFlight;
         synchronized (executorLock) {
-            if (jobExecutor != null && jobExecutor.getCorePoolSize() == desired) {
+            if (jobExecutor != null && jobExecutor.getMaximumPoolSize() == desired) {
                 return;
             }
             ThreadPoolExecutor previous = jobExecutor;
+            // 按需扩容而非按 maxInFlight 预热：core=0 + SynchronousQueue 是「直接交接」——
+            // 有空闲 worker 就复用，没有才新建，最多建到 desired。线程数因此等于真实并发峰值
+            // (比如只有 8 路并发就只有 8 条 worker)，而不是被 maxInFlight(默认 256)顶满。
+            // 手机上每条线程都占一份栈(实测 64 条 ≈ 24MB Stack)，这样能把空占的栈省掉，
+            // 空闲 60s 后 worker 还会自己退出，稳态回到 0 条。
             jobExecutor = new ThreadPoolExecutor(
-                desired,
+                0,
                 desired,
                 60L,
                 TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(Math.max(desired * 2, 64)),
+                new SynchronousQueue<Runnable>(),
                 new ThreadFactory() {
                     @Override
                     public Thread newThread(Runnable runnable) {
@@ -687,11 +692,11 @@ public class RelayClient {
                         thread.setDaemon(true);
                         return thread;
                     }
-                }
+                },
+                // 服务端已按 maxInFlight 限制在途数量，正常到不了 desired；万一真饱和了，
+                // 就在接收线程上就地把这条 job 跑掉(天然背压:跑完才继续读下一条)，绝不丢。
+                new ThreadPoolExecutor.CallerRunsPolicy()
             );
-            // 核心线程也允许超时回收：maxInFlight 默认 256，一次并发高峰会创建到 256 条线程，
-            // 不回收的话它们会在手机上一直常驻(每条线程都占栈)
-            jobExecutor.allowCoreThreadTimeOut(true);
             if (previous != null) {
                 previous.shutdownNow();
             }
