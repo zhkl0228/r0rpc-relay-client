@@ -166,29 +166,24 @@
                 </executions>
             </plugin>
             <plugin>
-                <!-- 原来这一步是 android-frida-demo/sync-jar.ps1 干的(只 Windows 能跑)。
-                     标准构建把主 jar 放 target/(名字带版本号，Central 认这个)；这里再拷一份稳定名
-                     dist/r0rpc-relay-client.jar 给文档/demo 引用，并同步给 xposed-demo(它当编译依赖、
-                     由 AGP 自己 dex，要普通 class jar)。android-frida-demo 那份由上面的 d8 产出 dex jar。 -->
+                <!-- android-frida-demo 是 adb push 一个 dex 文件由 Frida 加载，所以把 d8 产出的
+                     dex jar 同步到它的 lib/ 供直接推送。xposed-demo 改从 Maven Central 取依赖、
+                     不再需要本地 jar，故这里只同步 android-frida-demo 这一份。 -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
                     <execution>
-                        <id>sync-demo-jars</id>
+                        <id>sync-android-frida-dex</id>
                         <phase>package</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <target>
-                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
-                                      tofile="${project.basedir}/dist/r0rpc-relay-client.jar" overwrite="true"/>
-                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
-                                      tofile="${project.basedir}/../xposed-demo/app/libs/r0rpc-relay-client.jar" overwrite="true"/>
                                 <copy file="${project.build.directory}/${project.build.finalName}-dex.jar"
                                       tofile="${project.basedir}/../android-frida-demo/lib/r0rpc-relay-client.jar" overwrite="true"/>
-                                <echo message="synced class jar to dist/ and xposed-demo, dex jar to android-frida-demo"/>
+                                <echo message="synced dex jar to android-frida-demo"/>
                             </target>
                         </configuration>
                     </execution>
