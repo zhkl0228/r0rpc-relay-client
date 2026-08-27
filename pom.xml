@@ -92,9 +92,9 @@
                 </executions>
             </plugin>
             <plugin>
-                <!-- android-frida-demo 要把 jar 推到设备、由 DexClassLoader 加载，
-                     所以它那份必须是「含 classes.dex 的 dex jar」而不是普通 class jar
-                     (Android 14+ 的 W^X 只认设备上 App 私有、只读的 dex，普通 class jar 加载不了)。
+                <!-- 产出「含 classes.dex 的 dex jar」，随 deploy 作为 dex 分类器发到 Central，
+                     供 Android 运行时直接加载(如 Frida：普通 class jar 在设备上加载不了，
+                     Android 14+ 的 W^X 只认 App 私有、只读的 dex)。
                      用 Google Maven 的纯 Java d8(com.android.tools:r8 里的 D8 主类)来转，
                      不依赖本地 Android SDK / build-tools，跨平台。
                      注意：这个 goal 在 Maven 自身的 JVM 里跑，d8/r8 需要 JDK 17+，
@@ -161,30 +161,6 @@
                                     <classifier>dex</classifier>
                                 </artifact>
                             </artifacts>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <!-- android-frida-demo 是 adb push 一个 dex 文件由 Frida 加载，所以把 d8 产出的
-                     dex jar 同步到它的 lib/ 供直接推送。xposed-demo 改从 Maven Central 取依赖、
-                     不再需要本地 jar，故这里只同步 android-frida-demo 这一份。 -->
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <id>sync-android-frida-dex</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <copy file="${project.build.directory}/${project.build.finalName}-dex.jar"
-                                      tofile="${project.basedir}/../android-frida-demo/lib/r0rpc-relay-client.jar" overwrite="true"/>
-                                <echo message="synced dex jar to android-frida-demo"/>
-                            </target>
                         </configuration>
                     </execution>
                 </executions>
