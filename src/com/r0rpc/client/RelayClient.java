@@ -76,7 +76,7 @@ public class RelayClient {
     private volatile ThreadPoolExecutor jobExecutor;
 
     public RelayClient(String baseUrl, String username, String password, String clientId, String group) {
-        this(baseUrl, username, password, clientId, group, defaultPlatform(), 5000, 30000);
+        this(baseUrl, username, password, clientId, group, DEFAULT_PLATFORM, 5000, 30000);
     }
 
     public RelayClient(String baseUrl, String username, String password, String clientId, String group,
@@ -91,25 +91,17 @@ public class RelayClient {
         this.password = password;
         this.clientId = clientId;
         this.group = group;
-        this.platform = platform == null || platform.trim().isEmpty() ? defaultPlatform() : platform.trim();
+        this.platform = platform == null || platform.trim().isEmpty() ? DEFAULT_PLATFORM : platform.trim();
         this.connectTimeoutMs = connectTimeoutMs;
         this.readTimeoutMs = readTimeoutMs;
     }
 
-    private static String defaultPlatform() {
-        try {
-            Class<?> buildClass = Class.forName("android.os.Build");
-            Object value = buildClass.getField("MANUFACTURER").get(null);
-            if (value != null) {
-                String manufacturer = String.valueOf(value).trim();
-                if (!manufacturer.isEmpty()) {
-                    return manufacturer;
-                }
-            }
-        } catch (Throwable ignore) {
-        }
-        return "android";
-    }
+    /**
+     * 没显式传 platform 时的兜底值。platform 现在表示<b>接入种类</b>（如 {@code Android/xposed}、
+     * {@code Apple/frida}、{@code J2SE}），该由各 client 显式传入；这里不再反射 android.os.Build
+     * 去猜机型（那既区分不了客户端种类，又把「桌面」误报成 android）。
+     */
+    private static final String DEFAULT_PLATFORM = "unknown";
 
     public RelayClient registerHandler(String action, RelayHandler handler) {
         if (handler == null) {

@@ -19,7 +19,8 @@ public final class ExampleMain {
             "device",
             "850128",
             "device-001",              // clientId 要稳定，别用随机值
-            "default"
+            "default",
+            "J2SE"                     // platform：桌面 JVM，与各设备端(Android/*、Apple/*)区分
         );
 
         client.registerHandler("ping", new RelayHandler() {

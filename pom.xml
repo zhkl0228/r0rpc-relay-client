@@ -6,7 +6,7 @@
 
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.2.1</version>
+    <version>1.2.2</version>
     <packaging>jar</packaging>
     <name>r0rpc-relay-client</name>
     <description>r0rpc 设备端 SDK（数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json；一个 jar 两端通用）</description>
