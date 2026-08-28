@@ -115,3 +115,17 @@ Invoke body keeps `payload` flat:
 }
 ```
 
+
+## 内置示例 ExampleMain
+
+`com.r0rpc.client.ExampleMain` 是桌面 JVM 的最小 demo（jar 里就有），注册一个 `ping`：回
+`clientType="j2se"` + 主机/进程/运行时身份（`host`/`pid`/`os`/`java`）。`clientType` 是「接入种类」，
+让**调用方在 ping 回包里**区分是哪种 client（与登录上报的 `platform`=`J2SE` 对应）。各端约定：
+`j2se` / `xposed` / `android-frida` / `ios-frida` / `ios-theos` / `macos`。
+
+跑（桌面需自带 `org.json`，见上「依赖」）：
+
+```bash
+java -cp "r0rpc-relay-client-<ver>.jar:<org.json>:<Java-WebSocket>:<slf4j-api>" \
+     com.r0rpc.client.ExampleMain
+```
