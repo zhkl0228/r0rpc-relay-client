@@ -6,7 +6,7 @@
 
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
     <packaging>jar</packaging>
     <name>r0rpc-relay-client</name>
     <description>r0rpc 设备端 SDK（数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json；一个 jar 两端通用）</description>
@@ -36,6 +36,9 @@
         <maven.test.skip>true</maven.test.skip>
         <!-- d8/r8 的纯 Java 制品版本；换版本只动这里 -->
         <r8.version>8.7.18</r8.version>
+        <!-- WebSocket 客户端及其日志依赖；依赖声明与下面 d8 打包引用的 jar 名共用同一版本号 -->
+        <java-websocket.version>1.6.0</java-websocket.version>
+        <slf4j.version>2.0.13</slf4j.version>
     </properties>
 
     <!-- r8(com.android.tools:r8)只在 Google Maven 上；仅这个 plugin 用得到 -->
@@ -61,13 +64,14 @@
         <dependency>
             <groupId>org.java-websocket</groupId>
             <artifactId>Java-WebSocket</artifactId>
-            <version>1.5.7</version>
+            <version>${java-websocket.version}</version>
         </dependency>
-        <!-- Java-WebSocket 的日志依赖;显式声明好固定版本(dex 打包按文件名引用)。无 provider 时 NOP。 -->
+        <!-- Java-WebSocket 的日志依赖;显式声明好固定版本(dex 打包按文件名引用)。无 provider 时 NOP。
+             版本跟随 Java-WebSocket 自己声明的 slf4j 版本。 -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>1.7.36</version>
+            <version>${slf4j.version}</version>
         </dependency>
     </dependencies>
 
@@ -163,13 +167,19 @@
                                 <!-- 21 起足够；RelayClient 是 Java8 字节码 -->
                                 <argument>--min-api</argument>
                                 <argument>21</argument>
+                                <!-- 给 d8 一份 bootclasspath：min-api 21 原生不支持接口默认/静态方法(API 24 才有)，
+                                     d8 必须 desugar，desugar 要能解析 java.lang.RuntimeException/java.io.Closeable
+                                     等父类型。不引 Android SDK，直接指向当前 JDK(缺的都是 java.base 标准类型，
+                                     签名与 Android 一致)，消掉那堆「Type ... not found」警告。 -->
+                                <argument>--lib</argument>
+                                <argument>${java.home}</argument>
                                 <!-- output 参数给 .jar 路径时，d8 直接产出含 classes.dex 的 jar；
                                      产到 target 下作为 dex classifier 制品，随 deploy 一起发 Central -->
                                 <argument>--output</argument>
                                 <argument>${project.build.directory}/${project.build.finalName}-dex.jar</argument>
                                 <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
-                                <argument>${project.build.directory}/dex-libs/Java-WebSocket-1.5.7.jar</argument>
-                                <argument>${project.build.directory}/dex-libs/slf4j-api-1.7.36.jar</argument>
+                                <argument>${project.build.directory}/dex-libs/Java-WebSocket-${java-websocket.version}.jar</argument>
+                                <argument>${project.build.directory}/dex-libs/slf4j-api-${slf4j.version}.jar</argument>
                             </arguments>
                         </configuration>
                     </execution>
@@ -186,8 +196,7 @@
                 <!-- 把 d8 产出的 dex jar 作为 classifier=dex 的附加制品挂上，
                      这样 deploy 会同时发布：
                        主 jar          → J2SE / 桌面 JVM，以及 Android 用 AGP 自己 dex 的工程
-                       xxx-dex.jar     → Android 运行时直接加载 dex 的场景(如 Frida)
-                     依赖方按需取 classifier：com.github.zhkl0228:r0rpc-relay-client:1.2.0(:dex) -->
+                       xxx-dex.jar     → Android 运行时直接加载 dex 的场景(如 Frida) -->
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
                 <version>3.6.0</version>

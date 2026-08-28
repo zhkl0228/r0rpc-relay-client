@@ -13,7 +13,7 @@ This folder contains the Java relay client SDK used by Android/Xposed integratio
 <dependency>
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
 </dependency>
 ```
 
@@ -24,7 +24,7 @@ Android 运行时直接加载 dex 的场景（如 Frida），取 `dex` 分类器
 <dependency>
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
     <classifier>dex</classifier>
 </dependency>
 ```
@@ -37,7 +37,7 @@ Android 运行时直接加载 dex 的场景（如 Frida），取 `dex` 分类器
 mvn package
 ```
 
-产物在 `target/r0rpc-relay-client-1.2.0.jar`（Java 8 字节码）。构建时还用 d8 产出一份 `dex` 分类器
+产物在 `target/r0rpc-relay-client-1.2.1.jar`（Java 8 字节码）。构建时还用 d8 产出一份 `dex` 分类器
 （含 `classes.dex`），随 deploy 一起发 Central；android-frida-demo 运行时从 Central 下载它，xposed-demo
 把主 jar 交给 AGP 自己 dex——两个 demo 都不再抱本地 jar。
 
