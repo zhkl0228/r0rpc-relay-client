@@ -4,24 +4,27 @@ This folder contains the Java relay client SDK used by Android/Xposed integratio
 
 ## 依赖（Maven Central）
 
-数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json。主 jar：
+- **JSON**：数据模型用 `org.json.JSONObject`——Android 走系统自带，桌面 JVM 需自行加 `org.json:json`（`provided`，不随主 jar 带）。
+- **WebSocket**：用 `org.java-websocket:Java-WebSocket`（+`slf4j-api`）——Android/Java 8 没有内置 WS 客户端，作为传递依赖自动带上，无需手动加。
+
+主 jar：
 
 ```xml
 <dependency>
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.1.1</version>
+    <version>1.2.0</version>
 </dependency>
 ```
 
 Android 运行时直接加载 dex 的场景（如 Frida），取 `dex` 分类器——jar 里是 `classes.dex`，
-可直接 `DexClassLoader`：
+**自包含**（SDK + Java-WebSocket + slf4j 都 d8 进去了），可直接 `DexClassLoader`：
 
 ```xml
 <dependency>
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.1.1</version>
+    <version>1.2.0</version>
     <classifier>dex</classifier>
 </dependency>
 ```
@@ -34,7 +37,7 @@ Android 运行时直接加载 dex 的场景（如 Frida），取 `dex` 分类器
 mvn package
 ```
 
-产物在 `target/r0rpc-relay-client-1.1.1.jar`（Java 8 字节码）。构建时还用 d8 产出一份 `dex` 分类器
+产物在 `target/r0rpc-relay-client-1.2.0.jar`（Java 8 字节码）。构建时还用 d8 产出一份 `dex` 分类器
 （含 `classes.dex`），随 deploy 一起发 Central；android-frida-demo 运行时从 Central 下载它，xposed-demo
 把主 jar 交给 AGP 自己 dex——两个 demo 都不再抱本地 jar。
 

@@ -6,7 +6,7 @@
 
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.1.1</version>
+    <version>1.2.0</version>
     <packaging>jar</packaging>
     <name>r0rpc-relay-client</name>
     <description>r0rpc 设备端 SDK（数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json；一个 jar 两端通用）</description>
@@ -54,6 +54,20 @@
             <artifactId>json</artifactId>
             <version>20231013</version>
             <scope>provided</scope>
+        </dependency>
+        <!-- WebSocket 客户端。Android / Java 8 都没有内置 WS 客户端,所以必须打包(compile):
+             桌面使用方走传递依赖;Android-AGP 打进 APK;frida 的 dex 里也一并 d8 进去(见下面 dex 步骤)。
+             Java-WebSocket 是 Java 7 字节码,两端都兼容。 -->
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.5.7</version>
+        </dependency>
+        <!-- Java-WebSocket 的日志依赖;显式声明好固定版本(dex 打包按文件名引用)。无 provider 时 NOP。 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.7.36</version>
         </dependency>
     </dependencies>
 
@@ -103,6 +117,24 @@
                 </executions>
             </plugin>
             <plugin>
+                <!-- 把运行时依赖(Java-WebSocket + slf4j;org.json 是 provided 不含)拷到 dex-libs/，
+                     供下面 d8 一起打进 dex(frida 加载的 dex 要自包含) -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-dex-libs</id>
+                        <phase>prepare-package</phase>
+                        <goals><goal>copy-dependencies</goal></goals>
+                        <configuration>
+                            <includeScope>runtime</includeScope>
+                            <outputDirectory>${project.build.directory}/dex-libs</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <!-- 产出「含 classes.dex 的 dex jar」，随 deploy 作为 dex 分类器发到 Central，
                      供 Android 运行时直接加载(如 Frida：普通 class jar 在设备上加载不了，
                      Android 14+ 的 W^X 只认 App 私有、只读的 dex)。
@@ -136,6 +168,8 @@
                                 <argument>--output</argument>
                                 <argument>${project.build.directory}/${project.build.finalName}-dex.jar</argument>
                                 <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
+                                <argument>${project.build.directory}/dex-libs/Java-WebSocket-1.5.7.jar</argument>
+                                <argument>${project.build.directory}/dex-libs/slf4j-api-1.7.36.jar</argument>
                             </arguments>
                         </configuration>
                     </execution>
@@ -153,7 +187,7 @@
                      这样 deploy 会同时发布：
                        主 jar          → J2SE / 桌面 JVM，以及 Android 用 AGP 自己 dex 的工程
                        xxx-dex.jar     → Android 运行时直接加载 dex 的场景(如 Frida)
-                     依赖方按需取 classifier：com.github.zhkl0228:r0rpc-relay-client:1.1.1(:dex) -->
+                     依赖方按需取 classifier：com.github.zhkl0228:r0rpc-relay-client:1.2.0(:dex) -->
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
                 <version>3.6.0</version>
