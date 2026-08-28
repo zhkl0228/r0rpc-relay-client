@@ -74,7 +74,7 @@ public final class SimpleWebSocket implements Closeable {
     private void handshake(URI uri, Map<String, String> headers) throws Exception {
         byte[] nonce = new byte[16];
         new SecureRandom().nextBytes(nonce);
-        String key = Base64Util.encode(nonce);
+        String key = java.util.Base64.getEncoder().encodeToString(nonce);
 
         String path = uri.getRawPath();
         if (path == null || path.isEmpty()) {
@@ -133,7 +133,7 @@ public final class SimpleWebSocket implements Closeable {
         }
 
         MessageDigest digest = MessageDigest.getInstance("SHA-1");
-        String expectedAccept = Base64Util.encode(digest.digest((key + WS_GUID).getBytes(StandardCharsets.UTF_8)));
+        String expectedAccept = java.util.Base64.getEncoder().encodeToString(digest.digest((key + WS_GUID).getBytes(StandardCharsets.UTF_8)));
         if (!expectedAccept.equals(acceptHeader)) {
             throw new IOException("WebSocket handshake verification failed");
         }

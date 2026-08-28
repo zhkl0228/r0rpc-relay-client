@@ -4,8 +4,7 @@ import com.r0rpc.relay.api.RelayHandler;
 import com.r0rpc.relay.api.RelayRequest;
 import com.r0rpc.relay.api.RelayResponse;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import org.json.JSONObject;
 
 public final class ExampleMain {
     private ExampleMain() {
@@ -23,7 +22,7 @@ public final class ExampleMain {
         client.registerHandler("ping", new RelayHandler() {
             @Override
             public void handleRequest(RelayRequest request, RelayResponse response) {
-                Map<String, Object> result = new LinkedHashMap<String, Object>();
+                JSONObject result = new JSONObject();
                 result.put("ok", true);
                 result.put("message", "pong");
                 response.success(result);

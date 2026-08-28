@@ -15,9 +15,7 @@ public interface RelayLogger {
     /** 连接断开、重连、服务端静默这类正常但值得知道的事。 */
     void warn(String message);
 
-    /**
-     * 没人处理的异常。设置了 {@link RelayClient.ErrorHandler} 时走那边，不会到这里。
-     */
+    /** SDK 内部没人处理的异常（连接/派发出错等）都到这里。 */
     void error(String message, Throwable error);
 
 }

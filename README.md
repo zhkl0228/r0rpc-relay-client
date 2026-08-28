@@ -4,13 +4,13 @@ This folder contains the Java relay client SDK used by Android/Xposed integratio
 
 ## 依赖（Maven Central）
 
-无第三方依赖，J2SE / 桌面 JVM / Android（AGP 自己 dex）都用主 jar：
+数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json。主 jar：
 
 ```xml
 <dependency>
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.1</version>
 </dependency>
 ```
 
@@ -21,7 +21,7 @@ Android 运行时直接加载 dex 的场景（如 Frida），取 `dex` 分类器
 <dependency>
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.1</version>
     <classifier>dex</classifier>
 </dependency>
 ```
@@ -34,9 +34,9 @@ Android 运行时直接加载 dex 的场景（如 Frida），取 `dex` 分类器
 mvn package
 ```
 
-产物在 `target/r0rpc-relay-client-1.0.0.jar`（Java 8 字节码）。构建时还会用 d8 产出一份
-dex jar 并同步到 `../android-frida-demo/lib/r0rpc-relay-client.jar`（含 `classes.dex`，供 Frida
-adb push 后 `DexClassLoader` 加载）。xposed-demo 改从 Maven Central 取依赖，不再需要本地 jar。
+产物在 `target/r0rpc-relay-client-1.1.1.jar`（Java 8 字节码）。构建时还用 d8 产出一份 `dex` 分类器
+（含 `classes.dex`），随 deploy 一起发 Central；android-frida-demo 运行时从 Central 下载它，xposed-demo
+把主 jar 交给 AGP 自己 dex——两个 demo 都不再抱本地 jar。
 
 ## 发布 Maven Central
 
@@ -62,11 +62,11 @@ RelayClient client = new RelayClient(
     "default"
 );
 
-client.registerAction("get_profile", payload -> {
-    Map<String, Object> result = new LinkedHashMap<>();
+client.registerHandler("get_profile", (request, response) -> {
+    JSONObject result = new JSONObject();   // 数据模型是 org.json.JSONObject
     result.put("uid", "10001");
     result.put("nickname", "demo");
-    return RpcResponse.success(result);
+    response.success(result);
 });
 
 client.start();

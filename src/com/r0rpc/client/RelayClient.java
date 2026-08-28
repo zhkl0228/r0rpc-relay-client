@@ -16,7 +16,9 @@ import java.lang.reflect.Modifier;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.zip.GZIPOutputStream;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,9 +30,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 public class RelayClient {
-    public interface ErrorHandler {
-        void onError(Throwable throwable);
-    }
 
     private static final String TAG = "R0RPC";
     private static final RelayLogger DEFAULT_LOGGER = new RelayLogger() {
@@ -63,7 +62,6 @@ public class RelayClient {
     private final String platform;
     private final int connectTimeoutMs;
     private final int readTimeoutMs;
-    private final Map<String, RpcHandler> handlers = new ConcurrentHashMap<String, RpcHandler>();
     private final Map<String, RelayHandler> relayHandlers = new ConcurrentHashMap<String, RelayHandler>();
     private final Object lifecycleLock = new Object();
     private final Object executorLock = new Object();
@@ -74,7 +72,6 @@ public class RelayClient {
     private volatile int maxInFlight = 256;
     private volatile boolean running;
     private volatile Thread workerThread;
-    private volatile ErrorHandler errorHandler;
     private volatile RelayLogger logger = DEFAULT_LOGGER;
     private volatile ThreadPoolExecutor jobExecutor;
 
@@ -114,11 +111,6 @@ public class RelayClient {
         return "android";
     }
 
-    public RelayClient registerAction(String action, RpcHandler handler) {
-        handlers.put(action, handler);
-        return this;
-    }
-
     public RelayClient registerHandler(String action, RelayHandler handler) {
         if (handler == null) {
             throw new IllegalArgumentException("handler can not be null");
@@ -135,11 +127,6 @@ public class RelayClient {
      */
     public RelayClient logger(RelayLogger logger) {
         this.logger = logger == null ? DEFAULT_LOGGER : logger;
-        return this;
-    }
-
-    public RelayClient onError(ErrorHandler handler) {
-        this.errorHandler = handler;
         return this;
     }
 
@@ -189,29 +176,26 @@ public class RelayClient {
     }
 
     public void login() throws IOException {
-        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        JSONObject body = new JSONObject();
         body.put("username", username);
         body.put("password", password);
         body.put("clientId", clientId);
         body.put("group", group);
         body.put("platform", platform);
-        body.put("maxInFlight", Integer.valueOf(maxInFlight));
+        body.put("maxInFlight", maxInFlight);
 
-        Map<String, Object> response = postJson("/api/client/login", null, body);
-        Object tokenValue = response.get("token");
-        if (!(tokenValue instanceof String) || ((String) tokenValue).isEmpty()) {
+        JSONObject response = postJson("/api/client/login", null, body);
+        String tokenValue = response.optString("token", "");
+        if (tokenValue.isEmpty()) {
             throw new IOException("Login succeeded but token is missing");
         }
-        token = (String) tokenValue;
-        Object maxInFlightValue = response.get("maxInFlight");
-        if (maxInFlightValue instanceof Number) {
-            int effective = ((Number) maxInFlightValue).intValue();
-            if (effective > 0) {
-                maxInFlight = effective;
-            }
+        token = tokenValue;
+        int effective = response.optInt("maxInFlight", 0);
+        if (effective > 0) {
+            maxInFlight = effective;
         }
-        Object wsUrlValue = response.get("wsUrl");
-        wsUrl = wsUrlValue instanceof String && !((String) wsUrlValue).isEmpty() ? (String) wsUrlValue : buildWsUrl();
+        String wsUrlValue = response.optString("wsUrl", "");
+        wsUrl = wsUrlValue.isEmpty() ? buildWsUrl() : wsUrlValue;
         ensureJobExecutor();
     }
 
@@ -276,7 +260,7 @@ public class RelayClient {
             return;
         }
         try {
-            postJson("/api/client/logout", token, new LinkedHashMap<String, Object>());
+            postJson("/api/client/logout", token, new JSONObject());
         } catch (Exception ignore) {
         }
     }
@@ -312,37 +296,27 @@ public class RelayClient {
                 return;
             }
             lastServerActivityAt = System.currentTimeMillis();
-            Object parsed = MiniJson.parse(text);
-            if (!(parsed instanceof Map)) {
+            JSONObject message = new JSONObject(text);
+            if (!"job".equals(message.optString("type"))) {
                 continue;
             }
-            Map<String, Object> message = (Map<String, Object>) parsed;
-            String type = asString(message.get("type"));
-            if (!"job".equals(type)) {
+            JSONObject jobObject = message.optJSONObject("job");
+            if (jobObject == null) {
                 continue;
             }
-            Object jobObject = message.get("job");
-            if (!(jobObject instanceof Map)) {
-                continue;
-            }
-            dispatchJob(socket, (Map<String, Object>) jobObject);
+            dispatchJob(socket, jobObject);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void dispatchJob(final SimpleWebSocket socket, Map<String, Object> job) throws IOException {
+    private void dispatchJob(final SimpleWebSocket socket, final JSONObject job) throws IOException {
         ensureJobExecutor();
-        final Map<String, Object> jobCopy = new LinkedHashMap<String, Object>(job);
-        Object payload = jobCopy.get("payload");
-        if (payload instanceof Map) {
-            jobCopy.put("payload", new LinkedHashMap<String, Object>((Map<String, Object>) payload));
-        }
+        // job 是每条消息新 parse 出来的 JSONObject，只交给一个 worker 处理，不跨消息共享，无需复制
         try {
             jobExecutor.execute(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        handleJob(socket, jobCopy);
+                        handleJob(socket, job);
                     } catch (IOException ex) {
                         closeQuietly(socket);
                         notifyError(ex);
@@ -354,50 +328,32 @@ public class RelayClient {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void handleJob(final SimpleWebSocket socket, Map<String, Object> job) throws IOException {
-        String requestId = asString(job.get("requestId"));
-        String action = asString(job.get("action"));
-        String groupName = asString(job.get("group"));
-        String targetClientId = asString(job.get("clientId"));
-        Map<String, Object> payload = job.get("payload") instanceof Map ? (Map<String, Object>) job.get("payload") : new LinkedHashMap<String, Object>();
+    private void handleJob(final SimpleWebSocket socket, JSONObject job) throws IOException {
+        String requestId = job.optString("requestId");
+        String action = job.optString("action");
+        String groupName = job.optString("group");
+        String targetClientId = job.optString("clientId");
+        JSONObject payload = job.optJSONObject("payload");
+        if (payload == null) {
+            payload = new JSONObject();
+        }
 
         long startedAt = System.currentTimeMillis();
         RelayRequest request = new RelayRequest(requestId, groupName, action, targetClientId, payload);
         RelayResponse response = new RelayResponse(requestId, new RelayResponse.ResultSender() {
             @Override
-            public void send(String respondedRequestId, String status, int httpCode, Map<String, Object> respondedPayload, String error, long latencyMs) throws IOException {
+            public void send(String respondedRequestId, String status, int httpCode, JSONObject respondedPayload, String error, long latencyMs) throws IOException {
                 sendResult(socket, respondedRequestId, status, httpCode, respondedPayload, error, latencyMs);
             }
         }, startedAt);
 
         RelayHandler relayHandler = relayHandlers.get(action);
-        if (relayHandler != null) {
-            try {
-                invokeRelayHandler(relayHandler, request, response);
-            } catch (Throwable throwable) {
-                response.failed(throwable);
-            }
-            return;
-        }
-
-        RpcHandler handler = handlers.get(action);
-        if (handler == null) {
+        if (relayHandler == null) {
             response.failed("No handler registered for action: " + action);
             return;
         }
-
         try {
-            RpcResponse rpcResponse = handler.handle(payload);
-            if (rpcResponse == null) {
-                response.success();
-                return;
-            }
-            if ("success".equalsIgnoreCase(rpcResponse.getStatus())) {
-                response.success(rpcResponse.getPayload());
-            } else {
-                response.failed(rpcResponse.getHttpCode(), rpcResponse.getError());
-            }
+            invokeRelayHandler(relayHandler, request, response);
         } catch (Throwable throwable) {
             response.failed(throwable);
         }
@@ -431,7 +387,10 @@ public class RelayClient {
                     continue;
                 }
                 String key = autoBind.key().trim().isEmpty() ? field.getName() : autoBind.key().trim();
-                Object raw = request.getPayload().get(key);
+                Object raw = request.getPayload().opt(key);
+                if (raw == JSONObject.NULL) {
+                    raw = null;
+                }
                 Object converted = convertValue(field.getType(), raw, autoBind);
                 field.setAccessible(true);
                 field.set(handler, converted);
@@ -463,36 +422,39 @@ public class RelayClient {
             if (raw != null) { return Boolean.valueOf(Boolean.parseBoolean(String.valueOf(raw))); }
             return Boolean.valueOf(autoBind.defaultBooleanValue());
         }
+        if (JSONObject.class.isAssignableFrom(type)) {
+            return raw instanceof JSONObject ? raw : new JSONObject();
+        }
         if (Map.class.isAssignableFrom(type)) {
-            return raw instanceof Map ? raw : new LinkedHashMap<String, Object>();
+            return raw instanceof JSONObject ? ((JSONObject) raw).toMap() : new java.util.LinkedHashMap<String, Object>();
         }
         return raw;
     }
 
-    private void sendResult(SimpleWebSocket socket, String requestId, String status, int httpCode, Map<String, Object> payload, String error, long latencyMs) throws IOException {
-        EncodedPayload encodedPayload = encodePayload(payload == null ? new LinkedHashMap<String, Object>() : payload);
+    private void sendResult(SimpleWebSocket socket, String requestId, String status, int httpCode, JSONObject payload, String error, long latencyMs) throws IOException {
+        EncodedPayload encodedPayload = encodePayload(payload == null ? new JSONObject() : payload);
 
-        Map<String, Object> resultBody = new LinkedHashMap<String, Object>();
+        JSONObject resultBody = new JSONObject();
         resultBody.put("requestId", requestId);
         resultBody.put("status", status);
         resultBody.put("httpCode", httpCode);
         resultBody.put("payload", encodedPayload.payload);
         if (encodedPayload.encoding.length() > 0) {
             resultBody.put("payloadEncoding", encodedPayload.encoding);
-            resultBody.put("payloadRawSize", Integer.valueOf(encodedPayload.rawSize));
-            resultBody.put("payloadCompressedSize", Integer.valueOf(encodedPayload.compressedSize));
+            resultBody.put("payloadRawSize", encodedPayload.rawSize);
+            resultBody.put("payloadCompressedSize", encodedPayload.compressedSize);
         }
         resultBody.put("error", error == null ? "" : error);
         resultBody.put("latencyMs", latencyMs);
 
-        Map<String, Object> envelope = new LinkedHashMap<String, Object>();
+        JSONObject envelope = new JSONObject();
         envelope.put("type", "result");
         envelope.put("result", resultBody);
-        socket.sendText(MiniJson.stringify(envelope));
+        socket.sendText(envelope.toString());
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> postJson(String path, String bearerToken, Map<String, Object> body) throws IOException {
+    private JSONObject postJson(String path, String bearerToken, JSONObject body) throws IOException {
         HttpURLConnection connection = null;
         try {
             URL url = new URL(baseUrl + path);
@@ -505,7 +467,7 @@ public class RelayClient {
             connection.setRequestProperty("Accept", "application/json");
             if (bearerToken != null && !bearerToken.isEmpty()) { connection.setRequestProperty("Authorization", "Bearer " + bearerToken); }
 
-            byte[] payload = MiniJson.stringify(body).getBytes(StandardCharsets.UTF_8);
+            byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
             OutputStream outputStream = connection.getOutputStream();
             outputStream.write(payload);
             outputStream.flush();
@@ -513,27 +475,27 @@ public class RelayClient {
 
             int statusCode = connection.getResponseCode();
             String responseText = readAll(statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream());
-            Object parsed;
+            JSONObject result;
             try {
-                parsed = responseText.isEmpty() ? new LinkedHashMap<String, Object>() : MiniJson.parse(responseText);
-            } catch (RuntimeException ex) {
+                result = responseText.isEmpty() ? new JSONObject() : new JSONObject(responseText);
+            } catch (JSONException ex) {
                 // body 不是 JSON：多半是 baseUrl 写错(少了路径前缀/打到了别的服务)，
                 // 网关或容器回了一张 HTML 错误页。把状态码和正文头部带上，别让它变成
-                // MiniJson 内部的 NumberFormatException——那个报错什么也说明不了
+                // 一个含义不明的 JSON 解析错。
+                // 注意显式 catch JSONException：制品里它是 RuntimeException，Android 框架里是 checked，
+                // 用 catch (RuntimeException) 会在 Android 上漏接。
                 throw new IOException("HTTP " + statusCode + " with non-JSON body from " + url + ": " + head(responseText), ex);
             }
-            if (!(parsed instanceof Map)) { throw new IOException("HTTP " + statusCode + " unexpected response from " + url + ": " + head(responseText)); }
-            Map<String, Object> result = (Map<String, Object>) parsed;
-            if (statusCode >= 400) { throw new IOException("HTTP " + statusCode + ": " + asString(result.get("error"))); }
+            if (statusCode >= 400) { throw new IOException("HTTP " + statusCode + ": " + result.optString("error")); }
             return result;
         } finally {
             if (connection != null) { connection.disconnect(); }
         }
     }
 
-    private EncodedPayload encodePayload(Map<String, Object> payload) throws IOException {
-        Map<String, Object> safePayload = payload == null ? new LinkedHashMap<String, Object>() : payload;
-        String payloadJson = MiniJson.stringify(safePayload);
+    private EncodedPayload encodePayload(JSONObject payload) throws IOException {
+        JSONObject safePayload = payload == null ? new JSONObject() : payload;
+        String payloadJson = safePayload.toString();
         byte[] raw = payloadJson.getBytes(StandardCharsets.UTF_8);
         if (raw.length < COMPRESS_PAYLOAD_THRESHOLD_BYTES) {
             return EncodedPayload.identity(safePayload);
@@ -543,7 +505,7 @@ public class RelayClient {
         if (wireSize >= raw.length) {
             return EncodedPayload.identity(safePayload);
         }
-        return EncodedPayload.compressed(Base64Util.encode(compressed), PAYLOAD_ENCODING_GZIP_BASE64_JSON, raw.length, compressed.length);
+        return EncodedPayload.compressed(java.util.Base64.getEncoder().encodeToString(compressed), PAYLOAD_ENCODING_GZIP_BASE64_JSON, raw.length, compressed.length);
     }
 
     private byte[] gzip(byte[] input) throws IOException {
@@ -585,11 +547,6 @@ public class RelayClient {
     }
 
     private void notifyError(Throwable throwable) {
-        ErrorHandler handler = errorHandler;
-        if (handler != null) {
-            handler.onError(throwable);
-            return;
-        }
         if (throwable == null) {
             return;
         }
@@ -777,7 +734,6 @@ public class RelayClient {
         return builder.toString();
     }
 
-    private static String asString(Object value) { return value == null ? "" : String.valueOf(value); }
 
     private static String urlEncode(String value) {
         StringBuilder builder = new StringBuilder();

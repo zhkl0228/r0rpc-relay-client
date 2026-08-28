@@ -6,10 +6,10 @@
 
     <groupId>com.github.zhkl0228</groupId>
     <artifactId>r0rpc-relay-client</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.1</version>
     <packaging>jar</packaging>
     <name>r0rpc-relay-client</name>
-    <description>r0rpc 设备端 SDK（无第三方依赖，同一个 jar 既跑 Android 也跑桌面 JVM）</description>
+    <description>r0rpc 设备端 SDK（数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json；一个 jar 两端通用）</description>
     <url>https://github.com/zhkl0228/pac/tree/master/r0rpc-clients/java</url>
     <licenses>
         <license>
@@ -45,6 +45,17 @@
             <url>https://maven.google.com</url>
         </pluginRepository>
     </pluginRepositories>
+
+    <dependencies>
+        <!-- JSON 数据模型用 org.json。Android(框架/android.jar)自带,所以 provided:
+             不打进产物、不传递给使用方;桌面 JVM 使用方需自行加 org.json:json。 -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20231013</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
 
     <build>
         <!-- 沿用 SDK 原有的目录结构，不强行改成 src/main/java -->
@@ -142,7 +153,7 @@
                      这样 deploy 会同时发布：
                        主 jar          → J2SE / 桌面 JVM，以及 Android 用 AGP 自己 dex 的工程
                        xxx-dex.jar     → Android 运行时直接加载 dex 的场景(如 Frida)
-                     依赖方按需取 classifier：com.github.zhkl0228:r0rpc-relay-client:1.0.0(:dex) -->
+                     依赖方按需取 classifier：com.github.zhkl0228:r0rpc-relay-client:1.1.1(:dex) -->
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
                 <version>3.6.0</version>
