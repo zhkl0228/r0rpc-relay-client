@@ -59,9 +59,9 @@ mvn clean deploy
 
 ```java
 RelayClient client = new RelayClient(
-    "https://gzmtx.cn/r0rpc",
+    "https://relay.example.com/r0rpc",
     "device",
-    "850128",
+    "your-password",
     "device-001",
     "default"
 );
@@ -79,7 +79,7 @@ client.start();
 ## Relay API usage
 
 ```java
-new RelayClient("https://gzmtx.cn/r0rpc", username, password, clientId, group)
+new RelayClient("https://relay.example.com/r0rpc", username, password, clientId, group)
     .registerHandler("ping", new RelayHandler() {
         @Override
         public void handleRequest(RelayRequest request, RelayResponse response) {

@@ -15,9 +15,9 @@ public final class ExampleMain {
 
     public static void main(String[] args) throws Exception {
         final RelayClient client = new RelayClient(
-            "https://gzmtx.cn/r0rpc",   // 线上默认；必须带 /r0rpc 前缀
+            "https://relay.example.com/r0rpc",   // 换成你自己的中转地址；必须带 /r0rpc 前缀
             "device",
-            "850128",
+            "your-password",
             "device-001",              // clientId 要稳定，别用随机值
             "default",
             "J2SE"                     // platform：桌面 JVM，与各设备端(Android/*、Apple/*)区分
