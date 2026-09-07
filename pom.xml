@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
     <name>r0rpc-relay-client</name>
     <description>r0rpc 设备端 SDK（数据模型用 org.json.JSONObject：Android 走系统自带、桌面 JVM 需 org.json:json；一个 jar 两端通用）</description>
-    <url>https://github.com/zhkl0228/pac/tree/master/r0rpc-clients/java</url>
+    <url>https://github.com/zhkl0228/r0rpc-relay-client</url>
     <licenses>
         <license>
             <name>The Apache Software License, Version 2.0</name>
@@ -24,12 +24,12 @@
         </developer>
     </developers>
     <scm>
-        <connection>scm:git:git@github.com:zhkl0228/pac.git</connection>
-        <developerConnection>scm:git:git@github.com:zhkl0228/pac.git</developerConnection>
-        <url>git@github.com:zhkl0228/pac.git</url>
+        <connection>scm:git:git@github.com:zhkl0228/r0rpc-relay-client.git</connection>
+        <developerConnection>scm:git:git@github.com:zhkl0228/r0rpc-relay-client.git</developerConnection>
+        <url>git@github.com:zhkl0228/r0rpc-relay-client.git</url>
     </scm>
 
-    <!-- 独立工程，不挂在 pac 的 pom 下：它是设备端产物，不参与 WAR 构建 -->
+    <!-- 设备端产物，独立工程 -->
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

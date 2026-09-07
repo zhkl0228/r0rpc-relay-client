@@ -1,6 +1,7 @@
-# Java Client
+# r0rpc-relay-client
 
-This folder contains the Java relay client SDK used by Android/Xposed integrations.
+r0rpc 设备端 Java SDK（relay client）：一个 jar 桌面 JVM 与 Android(含 Xposed/Frida) 两端通用。
+发布在 Maven Central，源码 Java 8 字节码。
 
 ## 依赖（Maven Central）
 
