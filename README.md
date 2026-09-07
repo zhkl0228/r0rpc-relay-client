@@ -88,6 +88,9 @@ new RelayClient("https://gzmtx.cn/r0rpc", username, password, clientId, group)
     .start();
 ```
 
+`group` 不用先在后台建：首次 login 时不存在会自动建出来（后台备注记着是哪台设备带出来的）；
+被后台停用的分组 login 返回 403。
+
 ## AutoBind usage
 
 ```java

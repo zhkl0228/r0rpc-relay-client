@@ -84,6 +84,10 @@ public class RelayClient {
         this(baseUrl, username, password, clientId, group, platform, 5000, 30000);
     }
 
+    /**
+     * @param group 设备分组。<b>不用先在后台建</b>：首次 login 时不存在会自动建出来（后台备注里记着是哪台
+     *              设备带出来的）；被后台停用的分组 login 返回 403。
+     */
     public RelayClient(String baseUrl, String username, String password, String clientId, String group,
                        String platform, int connectTimeoutMs, int readTimeoutMs) {
         this.baseUrl = normalizeBaseUrl(baseUrl);
